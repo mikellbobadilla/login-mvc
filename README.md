@@ -12,12 +12,12 @@ Para crear el proyecto se utilizó la página de Spring Initializer, con las sig
 
 La version de java de este proyecto es la 17.
 
-* **Spring Web** -> Para crear el proyecto web
-* **Spring Security** -> Para la seguridad
-* **Spring Data JPA** -> Para la persistencia de datos
-* **Thymeleaf** -> Para la creación de las vistas
-* **MySQL Driver** -> Para la conexión con la base de datos
-* **Spring Boot DevTools** -> para que se actualice automáticamente el proyecto al guardar los cambios
+**Spring Web**: Para crear el proyecto web
+**Spring Security**: Para la seguridad
+**Spring Data JPA**: Para la persistencia de datos
+**Thymeleaf**: Para la creación de las vistas
+**MySQL Driver**: Para la conexión con la base de datos
+**Spring Boot DevTools**: para que se actualice automáticamente el proyecto al guardar los cambios
 
 ### Configuración de la base de datos
 
@@ -30,7 +30,7 @@ Ejemplo:
 ```properties
 spring.datasource.url=jdbc:mysql://localhost:3306/tech
 spring.datasource.username=tu_usuario
-spring.datasource.password=tucontraseña
+spring.datasource.password=tu_contraseña
 spring.jpa.hibernate.ddl-auto=update
 spring.jpa.show-sql=false # Si quieres que se muestren las consultas SQL lo pruebas con true
 ```

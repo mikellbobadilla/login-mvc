@@ -1,4 +1,4 @@
-package com.sting.loginmvcjwt;
+package com.sting.loginmvc;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
