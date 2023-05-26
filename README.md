@@ -10,7 +10,7 @@ Solo está basado en como procesar las sesiones.
 
 Para crear el proyecto se utilizó la página de Spring Initializer, con las siguientes dependencias:
 
-La version de java de este proyecto es la 17.
+La version de java de este proyecto es la 17, pero puedes usar la versión que quieras.
 
 **Spring Web**: Para crear el proyecto web
 **Spring Security**: Para la seguridad
@@ -28,7 +28,7 @@ En la carpeta **resources** se encuentra el archivo **application.properties** d
 Ejemplo:
 
 ```properties
-spring.datasource.url=jdbc:mysql://localhost:3306/tech
+spring.datasource.url=jdbc:mysql://localhost:3306/login
 spring.datasource.username=tu_usuario
 spring.datasource.password=tu_contraseña
 spring.jpa.hibernate.ddl-auto=update
@@ -37,7 +37,7 @@ spring.jpa.show-sql=false # Si quieres que se muestren las consultas SQL lo prue
 
 ## Configuración de Spring Security
 
-Anteriormente, la configuration de Spring Security se creaba una clase que heredaba de **WebSecurityConfigurerAdapter** en el que se tenía que sobreescribir algunos metódos.
+Anteriormente, la configuration de Spring Security se creaba una clase que heredaba de **WebSecurityConfigureAdapter** en el que se tenía que sobreescribir algunos metódos.
 
 ejemplo:
 
@@ -46,8 +46,8 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
     @Override
     protected void configure(HttpSecurity http) throws Exception{
         http.authorizeRequests()
-                .antMatchers("/login").permitAll() // Cualquier usuario puede acceder a la ruta /login
-                .anyRequest().authenticated(); // Cualquier otra ruta requiere autenticación
+          .antMatchers("/login").permitAll() // Cualquier usuario puede acceder a la ruta /login
+          .anyRequest().authenticated(); // Cualquier otra ruta requiere autenticación
     }
 }
 ```
@@ -59,100 +59,183 @@ Ahora en la version de Spring Security 5.7.0-M2 la clase **WebSecurityConfigurer
 @EnableWebSecurity
 public class SecurityConfig {
 
-    @Bean
-    public SecurityFilerChain securityFilterChain(HttpSecurity http) throws Exception {
-        // Rutas donde el usuario puede acceder y otras que no
+  private final AuthenticationProvider authProvider;
+
+  public SecurityConfig(AuthenticationProvider authProvider) {
+    this.authProvider = authProvider;
+  }
+
+  @Bean
+  public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+
     http
-      .authorizeRequests(
-        authorizeRequests -> authorizeRequests
-          .antMatchers("/login", "/register", "/users").permitAll() // El usuario puede acceder al formulario de login
+      .formLogin()
+      /* Referencia al controlador que responde el formulario de login */
+      .loginPage("/login")
+      .and()
+      /* El tipo de autenticación se configuró. Está dentro de la clase 'AppConfig' */
+      .authenticationProvider(authProvider)
+      .authorizeHttpRequests()
+      /* Url que se puede acceder sin estar autenticado */
+      .antMatchers("/login", "/register")
+      .permitAll()
+      /* El resto de los endpoints requiere autenticación */
+      .anyRequest()
+      .authenticated();
 
-          .antMatchers("/assets/**").permitAll() // Para que se puedan aplicar los estilos de bootstrap 
-
-          .anyRequest().authenticated() // Cualquier otra ruta que tengamos el usuario tiene que estar autenticado
-    );
-
-    // Configuración del login
-    http.formLogin(
-      formLogin -> formLogin
-          .loginPage("/login") // Ruta de nuestro formulario custom de login (opcional) por defecto spring tiene su propio formulario de login
-    );
-
-
-    // Configuración del logout
-    http.logout(
-      logout -> logout
-          .deleteCookies("JSESSIONID", "jwt") // Borra la cookie de sesión
-          .logoutSuccessUrl("/login") // Url a la que se redirige en caso de exito
-          .permitAll() // Permitir acceso a la página de logout a cualquiera
-    );
-
-    // Configuración de CSRF
-    http.csrf().disable();
 
     return http.build();
-    }
+  }
 }
 ````
 
-Por ahora la configuración que se está utilizando es la que vamos a usar para este proyecto, aunque vamos a agregar más.
+## Configuración de la Autenticación a nivel Aplicación
+
+````java
+@Configuration
+public class AppConfig {
+
+  private final UserRepository userRepository;
+
+  public AppConfig(UserRepository userRepository) {
+    this.userRepository = userRepository;
+  }
+
+  @Bean
+  public PasswordEncoder passwordEncoder(){
+    return new BCryptPasswordEncoder(10);
+  }
+
+  /*
+    Se utilizó el término de clase anónima, porque la clase 'UserDetailsService' solo tiene un método,
+    que es 'loadByUsername()' 
+  */
+  @Bean
+  public UserDetailsService userDetailsService(){
+    /*
+      Se usó lambda para que sea más legible
+    */
+    return username -> userRepository.findByUsername(username)
+       .orElseThrow(()-> new UsernameNotFoundException("El usuario no existe!"));
+  }
+
+  /* El proveedor que usará Spring para la autenticación, se pueden agregar más tipos de autenticación */
+  @Bean
+  public AuthenticationProvider authProvider(){
+    var provider = new DaoAuthenticationProvider();
+    provider.setUserDetailsService(userDetailsService());
+    provider.setPasswordEncoder(passwordEncoder());
+    return provider;
+  }
+
+  @Bean
+  public AuthenticationManager authManager(AuthenticationConfiguration auth) throws Exception {
+    return auth.getAuthenticationManager();
+  }
+}
+````
+
+Esta es la configuración básica para que **Spring** pueda manejar la autenticación.
+
+**SpringSecurity** maneja por si solo la autenticación cuando aplicamos esta configuración; solo que le estamos pasando las clases que queremos que utilize **spring** para autenticar un usuario.
 
 ## Creando un modelo de Usuario
 
 ```java
+
 @Entity
-@Table(name = "users") // Nombre que tendrá la tabla en la base de datos
-public class AppUser {
+@Table(name = "users")
+public class User implements UserDetails {
+
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
+  private String name;
+  @Column(unique = true)
   private String username;
   private String password;
 
-  public AppUser() {
-  }
-
-  public AppUser(final Long id, final String username, final String password) {
-    this.id = id;
+  public User(String name, String username, String password) {
+    this.name = name;
     this.username = username;
     this.password = password;
+  }
+
+  public User() {
   }
 
   public Long getId() {
     return id;
   }
 
-  public void setId(final Long id) {
+  public void setId(Long id) {
     this.id = id;
   }
 
-  public String getUsername() {
-    return username;
+  public String getName() {
+    return name;
   }
 
-  public void setUsername(final String username) {
+  public void setName(String name) {
+    this.name = name;
+  }
+
+  public void setUsername(String username) {
     this.username = username;
   }
 
+  public void setPassword(String password) {
+    this.password = password;
+  }
+
+  /* Como no se configuró roles, no es necesario configurarlo */
+  @Override
+  public Collection<? extends GrantedAuthority> getAuthorities() {
+    return null;
+  }
+
+  @Override
   public String getPassword() {
     return password;
   }
 
-  public void setPassword(final String password) {
-    this.password = password;
+  @Override
+  public String getUsername() {
+    return username;
+  }
+
+  @Override
+  public boolean isAccountNonExpired() {
+    return true;
+  }
+
+  @Override
+  public boolean isAccountNonLocked() {
+    return true;
+  }
+
+  @Override
+  public boolean isCredentialsNonExpired() {
+    return true;
+  }
+
+  @Override
+  public boolean isEnabled() {
+    return true;
   }
 }
+
 ```
 
-El modelo nos servirá para poder mapear los usuarios en la base de datos y también **hibernate** nos creará la tabla con sus propiedades.
+La clase 'User' implementa la interfaz 'UserDetails', porque **Spring** encapsula dentro de una autenticación.
+El modelo nos servirá para poder mapear los usuarios en la base de datos y también **Hibernate** nos creará la tabla con sus propiedades.
 
 ## Repositorio de Usuario
 
 ```java
 @Repository
-public interface UserRepository extends JpaRepository<AppUser, Long>{
+public interface UserRepository extends JpaRepository<User, Long>{
   Optional<AppUser> findByUsername(String username); // Propiedad custom para encontrar un usuario por su username
-  boolean existsByUsername(String username); // Propiedad custom que valida si existe el usuario por su username
 }
 ```
 
@@ -164,44 +247,73 @@ La interfaz **UserRepository** es el que nos ayudara con la persistencia de los 
 
 ```html
 <!DOCTYPE html>
-<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<html xmlns:th="http://www.w3.org/1999/xhtml" xmlns:sf="http://www.w3.org/1999/xhtml" lang="es">
 <head>
-  <meta charset="UTF-8">
-  <meta http-equiv="X-UA-Compatible" content="IE=edge">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="stylesheet" href="/assets/dist/css/bootstrap.min.css">
-  <title>Inicio Session</title>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet"
+          integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
+    <title>Inicio Sesión</title>
+    <style>
+        html,
+        body {
+            height: 100%;
+        }
+
+        body {
+            display: grid;
+            place-items: center;
+            margin: 0;
+            padding: 0 32px;
+            animation: rotate 6s infinite alternate linear;
+        }
+
+        form {
+            max-width: 400px;
+        }
+    </style>
 </head>
-<body>
-  <main class="container my-5" style="max-width: 500px">
-    <h1 class="mt-5 mb-5 text-center">Inicio de Sesión</h1>
+<body class="bg-dark text-light">
+<form class="row g-3" th:action="@{/login}" th:object="${authRequest}" method="post">
 
-    <form class="row g-3" th:action="@{/login}" th:object="${user}" method="post">
+    <div th:if="${message}">
+        <p class="text-success text-center" th:text="${message}"></p>
+    </div>
+    
+    <div th:if="${param.error}">
+        <p class="text-danger text-center" th:text="'Los datos son incorrectos'"></p>
+    </div>
 
+    <h2 class="fs-1 text-center">Login</h2>
 
+    <div class="col-md-12 mb-2">
+        <label for="username" class="py-1">Usuario:</label>
+        <input type="text" class="form-control border-2 bg-dark text-light shadow-none" id="username"
+               th:field="*{username}" placeholder="user.." required>
+    </div>
 
-      <div class="col-md-12 mb-2">
-        <label for="username" class="">Usuario:</label>
-        <input type="text" class="form-control border-2" id="username" th:field="*{username}" placeholder="tu-gatita.." required>
-      </div>
-  
-      <div class="col-md-12 mb-2">
-        <label for="password" class="">Contraseña:</label>
-        <input type="password" class="form-control border-2" th:field="*{password}" id="password" placeholder="*****.." required>
-      </div>
-  
-      <div class="d-grid gap-2 text-center">
+    <div class="col-md-12 mb-2 bg-dark">
+        <label for="password" class="py-1">Contraseña:</label>
+        <input type="password" class="form-control border-2 bg-dark text-light shadow-none" th:field="*{password}"
+               id="password" placeholder="pass123.." required>
+    </div>
+
+    <div class="d-grid gap-2 text-center">
         <p>¿No tienes cuenta? <a href="/register">create una!</a></p>
-      </div>
-  
-      <div class="d-grid gap-2">
-        <button type="submit" class="btn btn-primary">Iniciar session</button>
-      </div>
-      <p class="mt-5 mb-3 text-muted text-center">&copy; 22022 trying to live</p>
-    </form>
-  </main>
+    </div>
 
-  <script src="/assets/dist/js/bootstrap.bundle.min.js"></script>
+    <div class="d-grid gap-2">
+        <button type="submit" class="btn btn-primary">Iniciar session</button>
+    </div>
+    <p class="mt-5 text-muted text-center">
+        &copy; 2023 mikell bobadilla<br />
+        <strong><a class="text-muted" href="https://github.com/mikellbobadilla/login_thymeleaf" target="_blank">Link to project</a></strong>
+    </p>
+</form>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js"
+        integrity="sha384-MrcW6ZMFYlzcLA8Nl+NtUVF0sA7MsXsP1UyJoMp4YLEuNSfAP+JcXn/tWtIaxVXM"
+        crossorigin="anonymous"></script>
 </body>
 </html>
 ```
@@ -209,194 +321,152 @@ La interfaz **UserRepository** es el que nos ayudara con la persistencia de los 
 **Formulario de Registro**
 
 ```html
+
 <!DOCTYPE html>
- <html lang="en" xmlns:th="http://www.thymeleaf.org"> <!--donde se aplica thymeleaf -->
+<html xmlns:th="http://www.w3.org/1999/xhtml" xmlns:sf="http://www.w3.org/1999/xhtml" lang="es">
 <head>
-  <meta charset="UTF-8">
-  <meta http-equiv="X-UA-Compatible" content="IE=edge">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="stylesheet" href="/assets/dist/css/bootstrap.min.css">
-  <title>Registro</title>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet"
+          integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
+    <title>Registro</title>
+    <style>
+    html,
+    body {
+      height: 100%;
+    }
+
+    body {
+      display: grid;
+      place-items: center;
+      margin: 0;
+      padding: 0 32px;
+      animation: rotate 6s infinite alternate linear;
+    }
+
+    form {
+      max-width: 400px;
+    }
+  </style>
 </head>
-<body>
-  <main class="container my-5" style="max-width: 500px">
-    <h1 class="mt-5 mb-5 text-center">Creación de Usuario</h1>
+<body class="bg-dark text-light">
+<form class="row g-3" th:action="@{/register}" th:object="${registerRequest}" method="post">
 
-    <form class="row g-3" th:action="@{/register}" th:object="${user}" method="post">
+    <div th:if="${message}">
+        <p class="text-warning text-center" th:text="${message}">Algun Texto</p>
+    </div>
 
-      <p th:if="${error}">
-        <span th:text="${error}"></span>
-      </p>
+    <h2 class="fs-1 text-center">Registro</h2>
 
-      <div class="col-md-12 mb-2">
-        <label for="username" class="">Elija Usuario:</label>
-        <input type="text" class="form-control border-2" id="username" th:field="*{username}" placeholder="tu-gatita.." required>
-      </div>
-  
-      <div class="col-md-12 mb-2">
-        <label for="password" class="">Elija Contraseña:</label>
-        <input type="password" class="form-control border-2" th:field="*{password}" id="password" placeholder="*****.." required>
-      </div>
-  
-      <div class="d-grid gap-2 text-center">
-        <p>¿Ya tenes una cuenta? <a href="/login">Entrá!</a></p>
-      </div>
-  
-      <div class="d-grid gap-2">
-        <button type="submit" class="btn btn-primary">Crear Usuario</button>
-      </div>
-      <p class="mt-5 mb-3 text-muted text-center">&copy; 2022 trying to live</p>
-    </form>
-  </main>
+    <div class="col-md-12 mb-2">
+        <label for="username" class="py-1">Usuario:</label>
+        <input type="text" class="form-control border-2 bg-dark text-light shadow-none" id="username"
+               th:field="*{username}" placeholder="user.." required>
+    </div>
 
-  <script src="/assets/dist/js/bootstrap.bundle.min.js"></script>
+    <div class="col-md-12 mb-2">
+        <label for="name" class="py-1">Nombre:</label>
+        <input type="text" class="form-control border-2 bg-dark text-light shadow-none" id="name" th:field="*{name}"
+               placeholder="name.." required>
+    </div>
+
+    <div class="col-md-12 mb-2 bg-dark">
+        <label for="password" class="py-1">Contraseña:</label>
+        <input type="password" class="form-control border-2 bg-dark text-light shadow-none" th:field="*{password}"
+               id="password" placeholder="pass123.." required>
+    </div>
+
+    <div class="d-grid gap-2 text-center">
+        <p>¿Ya tenes cuenta? <a href="/login">entra!</a></p>
+    </div>
+
+    <div class="d-grid gap-2">
+        <button type="submit" class="btn btn-primary">Registrarme</button>
+    </div>
+    <p class="mt-5 text-muted text-center">
+        &copy; 2023 mikell bobadilla<br/>
+        <strong><a class="text-muted" href="https://github.com/mikellbobadilla/login_thymeleaf" target="_blank">Link to project</a></strong>
+    </p>
+</form>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js"
+        integrity="sha384-MrcW6ZMFYlzcLA8Nl+NtUVF0sA7MsXsP1UyJoMp4YLEuNSfAP+JcXn/tWtIaxVXM"
+        crossorigin="anonymous"></script>
 </body>
 </html>
+
 ```
 
 El formulario de **HTML** están adaptadas para que thymeleaf las pueda usar.
 
-Los estilos de Bootstrap están en la carpeta **static** si los quieres aplicar a tu propio proyecto, también puedes usar un **cdn**
-
-## Creación de los Servicios del Usuario
+## Crear el Servicio de Autenticación
 
 ```java
 @Service
-public class UserService implements UserDetailsService{
+public class AuthService {
 
-  @Autowired
-  UserRepository userRepository;
+    private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
 
-  BCryptPasswordEncoder passwordEncoder;
+    public AuthService(UserRepository userRepository, PasswordEncoder passwordEncoder) {
+        this.userRepository = userRepository;
+        this.passwordEncoder = passwordEncoder;
+    }
 
-  // Carga al usuario por su nombre de usuario
-  @Override
-  public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+    public String register(RegisterRequest request){
+        User user = new User(
+                request.getName(),
+                request.getUsername(),
+                passwordEncoder.encode(request.getPassword())
+        );
 
-    AppUser user = userRepository.findByUsername(username).orElseThrow(
-            () -> new UsernameNotFoundException(String.format("user %s not found", username))
-    );
-
-    return new User(user.getUsername(), user.getPassword(), new ArrayList<>());
-  }
-
-  // Válida si el usuario existe -> lo usaremos cuando un usuario se esté registrando
-  public Boolean validateUsername (String username){
-    return userRepository.existsByUsername(username);
-  }
-
-  // Crea un nuevo hash de password -> lo usaremos cuando un usuario se esté registrando
-  public String encodePassword(String password){
-    return passwordEncoder.encode(password);
-  }
+        userRepository.save(user);
+        return "Usuario creado!";
+    }
 }
 ```
-
-La clase **UserService** implementa la interfaz **UserDetailsService** el cual tenemos que implementar el método **loadUserByUsername** que recibe por parámetro el **usuario**, lo que hay dentro del método es la lógica básica para cargar un usuario.
-
-
-## Antes de Crear los Controladores
-
-Antes de crear los controladores hay que agregar algunas modificaciones en la clase **SecurityConfig** para poder gestionar los usuarios en spring
-
-```java
-@Configuration
-@EnableWebSecurity
-public class SecurityConfig {
-
-  @Autowired
-  UserService userService; // Traemos un atributo de la clase UserService
-
-  // Configuración de seguridad para la aplicación
-  @Bean
-  public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-    // Solo tienes que agregar a lo que ya se configuró.
-    
-    // Configuración de CSRF -> Está desactivado, ya que no se está usando en el formulario, pero si quieres lo puedes usar; pero tiene que modificar el formulario HTML
-    http.csrf().disable();
-    
-    // EL proveedor que implementamos abajo
-    http.authenticationProvider(authenticationProvider()); // Configuración del proveedor de autenticación
-
-    return http.build();
-  }
-
-  // Configuración del proveedor de autenticación
-  @Bean
-  public DaoAuthenticationProvider authenticationProvider() throws Exception {
-    DaoAuthenticationProvider provider = new DaoAuthenticationProvider();
-    provider.setUserDetailsService(userService); // La clase user Service
-    provider.setPasswordEncoder(passwordEncoder());
-    return provider;
-  }
-
-  // Configuración del AuthenticationManager -> procesa una petición de autenticación de una Request
-  @Bean
-  public AuthenticationManager authenticationManagerBean(AuthenticationConfiguration configuration) throws Exception {
-  return configuration.getAuthenticationManager();
-  }
-
-  @Bean
-  public BCryptPasswordEncoder passwordEncoder() {
-      return new BCryptPasswordEncoder();
-  }
-}
-```
-**SpringSecurity** maneja por si solo la autenticación cuando aplicamos esta configuración; solo que le estamos pasando las clases que queremos que utilize **spring** para autenticar un usuario.
-
-La configuración de ahora **spring** guarda en memoria el usuario que están autenticados y les da acceso a esas rutas.
-
-La autenticación con **JSON web Token** se implementará más adelante, si no quires guardar en memoria los usuarios que están autenticados.
-
 
 ## Creando los Controladores
 
 ```java
 @Controller
-public class UserController {
-  
-  @Autowired // Agrega la clase directamente en el atributo, de otra manera hay que crear su constructor al UserController pasando por parámetro los atributos declarados
-  UserRepository userRepository;
+public class AuthController {
 
-  @Autowired
-  BCryptPasswordEncoder passwordEncoder;
-    
-  @Autowired
-  UserService userService;
+    private final AuthService authService;
 
-  @GetMapping("/")
-  public String getHello() {
-    return "index";
-  }
-
-  @GetMapping("/login")
-  public String getLogin(Model model) {
-    AppUser user = new AppUser();
-
-    model.addAttribute("user", user);
-  
-    return "login";
-  }
-
-  @GetMapping("/register")
-  public String getRegister(Model model) {
-    AppUser user = new AppUser();
-
-    model.addAttribute("user", user);
-  
-    return "register";
-  }
-
-  @PostMapping("/register")
-  public String postRegister(@ModelAttribute AppUser user, Model model, HttpServletResponse response) {
-    boolean userExist = userRepository.existsByUsername(user.getUsername());
-    if (userExist) {
-      return "redirect:/register";
+    public AuthController(AuthService authService) {
+        this.authService = authService;
     }
-    String encoded = passwordEncoder.encode(user.getPassword());
-    AppUser newUser = new AppUser(null, user.getUsername(), encoded);
-    userRepository.save(newUser);
-    return "redirect:/users";
-  }
+
+    @GetMapping("/login")
+    public String loginPage(Model model){
+        AuthRequest auth = new AuthRequest();
+        model.addAttribute("authRequest", auth);
+        return "login";
+    }
+
+    @GetMapping("/register")
+    public String registerPage(Model model){
+        RegisterRequest register = new RegisterRequest();
+        model.addAttribute("registerRequest", register);
+        return "register";
+    }
+
+    @PostMapping("/register")
+    public String register(@ModelAttribute RegisterRequest request, RedirectAttributes attributes){
+        String message = authService.register(request);
+        attributes.addFlashAttribute("message", message);
+        return "redirect:/login";
+    }
+
+    /* Manejo de Errores, si el usuario ya está registrado */
+    @ExceptionHandler(SQLIntegrityConstraintViolationException.class)
+    public String errorRegister(RedirectAttributes attributes, SQLIntegrityConstraintViolationException exc){
+        Logger.getLogger(AuthController.class.getName()).warning(exc.getMessage());
+        attributes.addFlashAttribute("message", "El usuario ya existe");
+        return "redirect:/register";
+    }
 }
+
 ```
