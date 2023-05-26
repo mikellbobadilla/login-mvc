@@ -87,11 +87,11 @@ public class SecurityConfig {
     return http.build();
   }
 }
-````
+```
 
 ## Configuración de la Autenticación a nivel Aplicación
 
-````java
+```java
 @Configuration
 public class AppConfig {
 
@@ -133,7 +133,7 @@ public class AppConfig {
     return auth.getAuthenticationManager();
   }
 }
-````
+```
 
 Esta es la configuración básica para que **Spring** pueda manejar la autenticación.
 
@@ -240,6 +240,91 @@ public interface UserRepository extends JpaRepository<User, Long>{
 ```
 
 La interfaz **UserRepository** es el que nos ayudara con la persistencia de los datos que recibamos del cliente.
+
+## Creando DTO para parametrizar los datos obtenidos
+
+Primero debemos crear una clase para recibir los datos del usuario que recibimos del formulario.
+
+**Para las peticiones de Registro**
+```java
+
+public class RegisterRequest {
+  private String username;
+  private String password;
+  private String name;
+
+  public RegisterRequest(String username, String password, String name) {
+    this.username = username;
+    this.password = password;
+    this.name = name;
+  }
+
+  public RegisterRequest() {
+  }
+
+  public String getUsername() {
+    return username;
+  }
+
+  public void setUsername(String username) {
+    this.username = username;
+  }
+
+  public String getPassword() {
+    return password;
+  }
+
+  public void setPassword(String password) {
+    this.password = password;
+  }
+
+  public String getName() {
+    return name;
+  }
+
+  public void setName(String name) {
+    this.name = name;
+  }
+}
+
+```
+
+**Petición de Autenticación**
+```java
+
+public class AuthRequest {
+  private String username;
+  private String password;
+
+  public AuthRequest(String username, String password) {
+    this.username = username;
+    this.password = password;
+  }
+
+  public AuthRequest() {
+  }
+
+  public String getUsername() {
+    return username;
+  }
+
+  public void setUsername(String username) {
+    this.username = username;
+  }
+
+  public String getPassword() {
+    return password;
+  }
+
+  public void setPassword(String password) {
+    this.password = password;
+  }
+}
+
+```
+
+Estas clases las utiliza **Thymeleaf**, creando los objetos con los datos del usuario que recibimos.
+Dentro del controlador entenderemos su uso.
 
 ## Páginas de HTML para el login y el registro de los usuarios
 
